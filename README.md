@@ -4,9 +4,18 @@ date: 2019-01-15 21:20:32
 tags:
 ---
 # vue-cli项目webpack3升级到webapck4分享
-webpack4出来也挺久了，那么webpack4相比webpack3给我们的项目带来了那些变化，我们通过对webpack3的vue项目升级来了解一下。
+webpack4出来也挺久了，那么webpack4相比webpack3给我们的项目带来了那些变化：
 
-首先我们vue-cli2来构建一个vue的项目，这一步相信大家都会了，如果没有构建过大家可以上网上看看列子，很简单的。
+1.速度大幅度提升，官方在发布的时候也曾表示，其编译速度提升了 60% ~ 98%。
+
+2.添加了mode模式，--development开发模式，--production编译模式。
+
+3.开箱即用 WebAssembly，webpack4提供了wasm的支持，现在可以引入和导出任何一个 Webassembly 的模块，也可以写一个loader来引入C++、C和Rust。
+ (这一点暂时还没有了解)
+
+4.全新的插件系统(比如一些插件的废除，新增) 
+
+我们通过用webpack3的构建的vue项目升级来体验一下。首先我们vue-cli2来构建一个vue的项目，这一步相信大家都会了，如果没有构建过大家可以上网上看看列子，很简单的。
 
 可以看到生成完的项目package.json里面webpack的相关库版本如下：
 ```
@@ -60,8 +69,61 @@ You may need an additional loader to handle the result of these loaders.
 ```
 Error: webpack.optimize.CommonsChunkPlugin has been removed, please use config.optimization.splitChunks instead.
 ```
-webpack4废弃了这个方法了，取而代之的是使用iptimization来打包公共的引用模块。
+webpack4废弃了这个方法了，取而代之的是使用iptimization来打包公共的引用模块。我们项目中找到commonsChunkPlugin方法，这个插件引用主要是在
+webpack.prod.conf.js这个文件下面，只有在打包的时候用到，我们删除掉commonsChunkPlugin的使用，在里面添加上
+```
+new webpack.optimize.SplitChunksPlugin({
+    chunks: "all",
+    minSize: 30000,
+    minChunks: 1,
+    maxAsyncRequests: 5,
+    maxInitialRequests: 3,
+    name: true,
+    cacheGroups: {
+        default: {
+            minChunks: 2,
+            priority: -20,
+            reuseExistingChunk: true,
+        },
+        vendors: {
+            test: /[\\/]node_modules[\\/]/,
+            priority: -10
+        }
+    }
+})
+```
 接着替换extract-text-webpack-plugin这个插件成mini-css-extract-plugin，因为extract-text-webpack-plugin已经被废除了在webpack4中。
+我们在webpack.prod.conf.js中去除extractTextPlugin,添加MiniCssExtractPlugin.这个插件作用是在webpack4中提取css。
+```
+ - new ExtractTextPlugin({
+      - filename: utils.assetsPath('css/[name].[contenthash].css'),
+      // Setting the following option to `false` will not extract CSS from codesplit chunks.
+      // Their CSS will instead be inserted dynamically with style-loader when the codesplit chunk has been loaded by webpack.
+      // It's currently set to `true` because we are seeing that sourcemaps are included in the codesplit bundle as well when it's `false`, 
+      // increasing file size: https://github.com/vuejs-templates/webpack/issues/1110
+      - allChunks: true,
+    - }),
++ new MiniCssExtractPlugin({
+      filename: utils.assetsPath('css/[name].[contenthash].css')
+    })
+```
+替换完webpack.prod.conf文件后，我们在找到utils.js里面，这个js里面也有使用到。
+```
+// build/utils.js
 
-到这里我们升级就完成了，如果大家有兴趣可以在升级babel,因为这边babel还是有6.x的版本。
+var MiniCssExtractPlugin = require("mini-css-extract-plugin");
+
+if (options.extract) {
+    -return ExtractTextPlugin.extract({
+        -use: loaders,
+        -fallback: 'vue-style-loader'
+      -})
+    + return [MiniCssExtractPlugin.loader].concat(loaders)
+} else {
+    return ['vue-style-loader'].concat(loaders)
+}
+
+```
+替换完以上这些内容，我们升级就完成了，重新打包后，你会发现打包速度有明显的提高。
+如果大家有兴趣可以在升级babel,因为这边babel还是有6.x的版本。
 
